@@ -3,14 +3,12 @@ import SwiftUI
 struct PupCalendarView: View {
     @EnvironmentObject var viewModel: PupViewModel
     
+    // Instead of separate @State vars, we store them in an observable object
+    @StateObject private var sheetManager = CalendarSheetManager()
+    
+    // Keep these as normal states
     @State private var selectedDate: Date = Date()
     @State private var currentMonth: Date = Date()
-    @State private var showExporter = false
-    @State private var csvURL: URL?
-    
-    // For adding an event via long press
-    @State private var showAddEventSheet = false
-    @State private var addEventDate: Date? = nil
     
     let columns = 7
     let calendar = Calendar.current
@@ -24,28 +22,25 @@ struct PupCalendarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     
-                    // Month header
                     monthHeader
                     calendarGrid
                     
-                    // Daily logs block, now with a small List to allow swipe-to-delete
+                    // Day logs
                     Text("Logs on \(formattedSelectedDate(selectedDate))")
                         .font(.headline)
                         .padding(.top, 4)
                     
                     let dayLogs = viewModel.logs(for: selectedDate)
-                    
                     if dayLogs.isEmpty {
                         Text("No tasks logged on this day.")
                             .foregroundColor(.secondary)
                             .padding(.bottom, 8)
                     } else {
-                        // A nested List (scrolled or not) to enable iOS swipe-to-delete
+                        // Use a List for iOS swipe-to-delete
                         List {
                             ForEach(dayLogs) { entry in
                                 HStack {
-                                    Text(entry.taskName)
-                                        .font(.body)
+                                    Text(entry.taskName).font(.body)
                                     Spacer()
                                     Text(entry.timestamp, style: .time)
                                         .font(.caption)
@@ -54,21 +49,19 @@ struct PupCalendarView: View {
                             }
                             .onDelete(perform: deleteLogsForSelectedDay)
                         }
-                        .frame(minHeight: 100, maxHeight: 300) // Adjust as needed
+                        .frame(minHeight: 100, maxHeight: 300)
                         .listStyle(.plain)
-                        // If you want to prevent inner scrolling:
                         .scrollDisabled(true)
                         .padding(.bottom, 8)
                     }
                     
-                    // Month summary block
+                    // Month summary
                     Text("\(monthTitleString(currentMonth)) Monthly Summary")
                         .font(.headline)
                         .padding(.top, 8)
                     
                     let logsThisMonth = logsInMonth(currentMonth)
                     let grouped = Dictionary(grouping: logsThisMonth, by: \.taskName)
-                    
                     if grouped.isEmpty {
                         Text("No activities recorded this month.")
                             .foregroundColor(.secondary)
@@ -78,8 +71,7 @@ struct PupCalendarView: View {
                             ForEach(grouped.keys.sorted(), id: \.self) { taskName in
                                 let count = grouped[taskName]?.count ?? 0
                                 HStack {
-                                    Text(taskName)
-                                        .font(.body)
+                                    Text(taskName).font(.body)
                                     Spacer()
                                     Text("\(count) time\(count == 1 ? "" : "s")")
                                         .font(.caption)
@@ -101,35 +93,41 @@ struct PupCalendarView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         if let url = viewModel.exportLogsToCSV() {
-                            csvURL = url
-                            showExporter = true
+                            // Set manager's URL, then defer showExporter
+                            sheetManager.csvURL = url
+                            DispatchQueue.main.async {
+                                sheetManager.showExporter = true
+                            }
                         }
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
                 }
             }
-            .sheet(isPresented: $showExporter) {
-                if let csvURL {
+            // Present CSV share sheet using manager
+            .sheet(isPresented: $sheetManager.showExporter) {
+                if let csvURL = sheetManager.csvURL {
                     ShareSheet(activityItems: [csvURL])
+                } else {
+                    // fallback view if no URL
+                    Text("No CSV was generated.")
                 }
             }
-            // Show add-event view on long press
-            .sheet(isPresented: $showAddEventSheet) {
-                if let date = addEventDate {
-                    AddEventView(
-                        date: date,
-                        tasks: viewModel.tasks
-                    ) { taskName, chosenTime in
+            // Present AddEventView using manager
+            .sheet(isPresented: $sheetManager.showAddEventSheet) {
+                if let date = sheetManager.addEventDate {
+                    AddEventView(date: date, tasks: viewModel.tasks) { taskName, chosenTime in
                         let combined = combine(day: date, time: chosenTime)
                         viewModel.logTask(taskName, at: combined)
                     }
+                } else {
+                    Text("No date was selected.")
                 }
             }
         }
     }
     
-    // Month header + arrows
+    // Month Header
     private var monthHeader: some View {
         HStack {
             Button {
@@ -158,11 +156,11 @@ struct PupCalendarView: View {
         return LazyVGrid(columns: gridColumns, spacing: 8) {
             ForEach(days, id: \.self) { date in
                 let dayNumber = calendar.component(.day, from: date)
-                let isInThisMonth = isSameMonth(date, as: currentMonth)
+                let isInMonth = isSameMonth(date, as: currentMonth)
                 let dayLogs = viewModel.logs(for: date)
                 let isSelectedDay = (dateOnly(date) == dateOnly(selectedDate))
                 
-                // up to 10 logs => 2 rows x 5 columns
+                // 2-row x 5-col = up to 10 logs
                 let limitedLogs = Array(dayLogs.prefix(10))
                 let row1 = Array(limitedLogs.prefix(5))
                 let row2 = Array(limitedLogs.dropFirst(5))
@@ -176,16 +174,17 @@ struct PupCalendarView: View {
                         }
                         Text("\(dayNumber)")
                             .font(.callout)
-                            .foregroundColor(isInThisMonth ? .primary : .gray)
+                            .foregroundColor(isInMonth ? .primary : .gray)
                     }
-                    // Dot rows
                     VStack(spacing: 2) {
+                        // first row of dots
                         HStack(spacing: 2) {
                             ForEach(row1, id: \.id) { log in
                                 let c = viewModel.tasks.first(where: { $0.name == log.taskName })?.color ?? .gray
                                 Circle().fill(c).frame(width: 5, height: 5)
                             }
                         }
+                        // second row if needed
                         if !row2.isEmpty {
                             HStack(spacing: 2) {
                                 ForEach(row2, id: \.id) { log in
@@ -200,11 +199,13 @@ struct PupCalendarView: View {
                 .onTapGesture {
                     selectedDate = date
                 }
-                // Long press => add event
+                // Long press => set manager's date, show sheet
                 .simultaneousGesture(
                     LongPressGesture().onEnded { _ in
-                        addEventDate = date
-                        showAddEventSheet = true
+                        sheetManager.addEventDate = date
+                        DispatchQueue.main.async {
+                            sheetManager.showAddEventSheet = true
+                        }
                     }
                 )
             }
@@ -212,7 +213,7 @@ struct PupCalendarView: View {
         .padding(.top, 8)
     }
     
-    // Delete from selected day
+    // Delete logs for the selected day
     private func deleteLogsForSelectedDay(_ offsets: IndexSet) {
         let logsThatDay = viewModel.logs(for: selectedDate)
         for offset in offsets {
@@ -221,14 +222,14 @@ struct PupCalendarView: View {
         }
     }
     
-    // Move month ±1
+    // Moves month ±1
     private func moveMonth(_ offset: Int) {
         if let newMonth = calendar.date(byAdding: .month, value: offset, to: currentMonth) {
             currentMonth = newMonth
         }
     }
     
-    // Merge day + time
+    // Combine day + time
     private func combine(day: Date, time: Date) -> Date {
         let dayComps = calendar.dateComponents([.year, .month, .day], from: day)
         let timeComps = calendar.dateComponents([.hour, .minute], from: time)
@@ -244,11 +245,11 @@ struct PupCalendarView: View {
     }
     
     // Helpers
+    
     private func makeDaysInMonth(for base: Date) -> [Date] {
         guard let interval = calendar.dateInterval(of: .month, for: base) else { return [] }
         
         var days: [Date] = []
-        
         // Leading offset
         var current = interval.start
         let weekdayOffset = calendar.component(.weekday, from: current) - calendar.firstWeekday
@@ -305,7 +306,7 @@ struct PupCalendarView: View {
     }
 }
 
-// AddEventView updated with onAppear fix
+// The AddEventView can remain the same, just ensure it doesn't rely on @State in PupCalendarView
 struct AddEventView: View {
     let date: Date
     let tasks: [PupTask]
@@ -325,7 +326,6 @@ struct AddEventView: View {
         self.tasks = tasks
         self.onConfirm = onConfirm
         
-        // If tasks is empty, we won't set a default name. We fallback in .onAppear.
         let defaultTask = tasks.first?.name ?? ""
         
         // Default time = 12:00 PM
@@ -362,24 +362,18 @@ struct AddEventView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        // If tasks was empty, this won't do anything
                         guard !selectedTaskName.isEmpty else { return }
                         onConfirm(selectedTaskName, selectedTime)
                         dismiss()
                     }
                 }
             }
-            .onAppear {
-                // If tasks was just loaded, pick a default
-                if selectedTaskName.isEmpty, let first = tasks.first {
-                    selectedTaskName = first.name
-                }
-            }
+            // If tasks loads asynchronously, you might also do .onAppear to re-check selectedTaskName
         }
     }
 }
 
-// Standard iOS share sheet
+// iOS share sheet
 struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
     
@@ -387,4 +381,15 @@ struct ShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+
+class CalendarSheetManager: ObservableObject {
+    // If the user presses share, store CSV URL & show sheet
+    @Published var showExporter: Bool = false
+    @Published var csvURL: URL? = nil
+    
+    // If user long-presses a day, store that date & show add-event sheet
+    @Published var showAddEventSheet: Bool = false
+    @Published var addEventDate: Date? = nil
 }
