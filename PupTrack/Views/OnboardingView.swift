@@ -5,8 +5,8 @@ struct OnboardingView: View {
     @EnvironmentObject var viewModel: PupViewModel
     
     // We'll have 4 pages total now:
-    // 1) Dog name
-    // 2) Welcome
+    // 1) Welcome
+    // 2) Dog name
     // 3) Tasks
     // 4) Photos
     @State private var currentPage: Int = 1
@@ -21,7 +21,6 @@ struct OnboardingView: View {
             case 3:
                 OnboardingTaskPage(currentPage: $currentPage)
             case 4:
-                // Photo page
                 OnboardingPhotoPage(currentPage: $currentPage)
             default:
                 EmptyView()
@@ -31,10 +30,8 @@ struct OnboardingView: View {
 }
 
 //
-// MARK: - Page 1: Collect the Dog's Name
+// MARK: - Page 1: Welcome
 //
-
-
 struct OnboardingWelcomePage: View {
     @EnvironmentObject var viewModel: PupViewModel
     @Binding var currentPage: Int
@@ -43,7 +40,7 @@ struct OnboardingWelcomePage: View {
         VStack(spacing: 24) {
             Spacer()
             
-            Image(systemName: "pawprint.fill") // replaced "paw.max.fill" with a valid SF Symbol
+            Image(systemName: "pawprint.fill")
                 .resizable()
                 .scaledToFit()
                 .foregroundColor(.orange)
@@ -74,17 +71,18 @@ struct OnboardingWelcomePage: View {
         }
     }
 }
+
 //
-// MARK: - Page 2: Name
+// MARK: - Page 2: Dog Name
 //
 struct OnboardingNamePage: View {
     @EnvironmentObject var viewModel: PupViewModel
     @Binding var currentPage: Int
     
-    // We’ll ensure the continue button is pinned even if the keyboard is open
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
+            
             Text("Your Dog’s Name")
                 .font(.title).bold()
             
@@ -104,16 +102,14 @@ struct OnboardingNamePage: View {
             .foregroundColor(.white)
             .cornerRadius(12)
             .padding(.horizontal, 40)
-            // Disable if the user hasn't entered a name
             .disabled(viewModel.dogName.trimmingCharacters(in: .whitespaces).isEmpty)
             
             Spacer()
         }
-        // Keep the button at bottom even when keyboard appears
+        // Keep button at bottom even with keyboard
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
-
 
 //
 // MARK: - Page 3: Tasks
@@ -125,17 +121,16 @@ struct OnboardingTaskPage: View {
     // For adding a new task
     @State private var customTaskName: String = ""
     
-    // Predefined color list in the order you specified
+    // Predefined color list
     @State private var colorOptions: [Color] = [
         .red, .orange, .yellow, .green, .mint, .teal,
         .cyan, .blue, .indigo, .purple, .pink, .brown
     ]
-//    @State private var colorIndex = 0
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                // top bar with back button
+                // Top bar with back
                 HStack {
                     Button {
                         currentPage = 2
@@ -167,16 +162,14 @@ struct OnboardingTaskPage: View {
                 HStack {
                     TextField("Add custom task (max 25)", text: $customTaskName)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                    
                     Button("Add") {
                         let trimmed = customTaskName.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return }
                         
-                        // pick the next color from colorOptions
                         let color = colorOptions[(viewModel.tasks.count) % colorOptions.count]
-//                        colorIndex += 1
-                        
                         viewModel.tasks.append(
-                            PupTask(name: trimmed, isSelected: true, color: color)
+                            PupTask(name: trimmed, isSelected: true, colorName: colorString(for: color))
                         )
                         customTaskName = ""
                     }
@@ -185,7 +178,6 @@ struct OnboardingTaskPage: View {
                 
                 Spacer()
                 
-                // A single wide "Continue" button at the bottom
                 Button(action: {
                     currentPage = 4
                 }) {
@@ -205,10 +197,29 @@ struct OnboardingTaskPage: View {
             .padding(.top, 20)
         }
     }
+    
+    // Convert SwiftUI Color -> string (for PupTask.colorName)
+    func colorString(for color: Color) -> String {
+        switch color {
+        case .red:     return "red"
+        case .orange:  return "orange"
+        case .yellow:  return "yellow"
+        case .green:   return "green"
+        case .mint:    return "mint"
+        case .teal:    return "teal"
+        case .cyan:    return "cyan"
+        case .blue:    return "blue"
+        case .indigo:  return "indigo"
+        case .purple:  return "purple"
+        case .pink:    return "pink"
+        case .brown:   return "brown"
+        default:       return "gray"
+        }
+    }
 }
 
 //
-// MARK: - Page 4: Photos for morning/afternoon/night
+// MARK: - Page 4: Photos
 //
 struct OnboardingPhotoPage: View {
     @EnvironmentObject var viewModel: PupViewModel
@@ -222,7 +233,7 @@ struct OnboardingPhotoPage: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                // top bar with back button
+                // Top bar with back
                 HStack {
                     Button {
                         currentPage = 3
@@ -251,7 +262,6 @@ struct OnboardingPhotoPage: View {
                 
                 Spacer()
                 
-                // A "Done" button at bottom
                 Button {
                     // finalize onboarding
                     viewModel.completeOnboarding()
@@ -266,7 +276,6 @@ struct OnboardingPhotoPage: View {
                 }
                 .padding(.horizontal, 40)
                 .padding(.bottom, 40)
-                // Disable if not all three photos are chosen
                 .disabled(!allPhotosChosen)
             }
             .onChange(of: morningPickerItem) { newItem in
@@ -293,9 +302,10 @@ struct OnboardingPhotoPage: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(slot.displayName)
                 .font(.headline)
+            
             ZStack {
-                // Show chosen image or a placeholder
-                if let image = viewModel.photoDict[slot] ?? nil {
+                
+                if let image = viewModel.getPhoto(slot: slot) ?? nil {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
@@ -315,13 +325,8 @@ struct OnboardingPhotoPage: View {
                         )
                 }
                 
-                // Make the entire rectangle clickable (for the PhotosPicker)
-                PhotosPicker(
-                    selection: pickerItem,
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
-                    // An invisible label that covers the entire area
+                // Make the entire rectangle clickable for the PhotosPicker
+                PhotosPicker(selection: pickerItem, matching: .images, photoLibrary: .shared()) {
                     Rectangle()
                         .fill(Color.clear)
                 }
@@ -349,9 +354,8 @@ struct PillRowView: View {
     var body: some View {
         HStack {
             ZStack {
-                // If selected, fill circle with pastel color
-                // If not, outline with pastel color
                 if task.isSelected {
+                    // we map colorName -> actual SwiftUI color in PupTask extension
                     Circle()
                         .fill(task.color)
                         .frame(width: 24, height: 24)
@@ -373,7 +377,6 @@ struct PillRowView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        // Slight pastel background to highlight the pill
         .background(task.color.opacity(0.15))
         .cornerRadius(16)
     }
