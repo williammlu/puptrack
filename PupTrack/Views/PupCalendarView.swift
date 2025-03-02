@@ -5,7 +5,6 @@ struct PupCalendarView: View {
     
     @State private var selectedDate: Date = Date()
     @State private var currentMonth: Date = Date()
-    
     @State private var showExporter = false
     @State private var csvURL: URL?
     
@@ -16,90 +15,88 @@ struct PupCalendarView: View {
     let columns = 7
     let calendar = Calendar.current
     
-    // Circle highlight for selected day
+    // Circle highlight
     let selectedCircleDiameter: CGFloat = 28
     let selectedCircleOpacity: Double = 0.3
     
     var body: some View {
         NavigationStack {
-            List {
-                
-                // SECTION 1: Calendar top
-                Section {
-                    // Month Header
-                    HStack {
-                        Button {
-                            moveMonth(-1)
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .padding(8)
-                        }
-                        Spacer()
-                        Text(monthTitleString(currentMonth))
-                            .font(.headline)
-                        Spacer()
-                        Button {
-                            moveMonth(1)
-                        } label: {
-                            Image(systemName: "chevron.right")
-                                .padding(8)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .listRowSeparator(.hidden)
-                    // Disable selection highlight on this row
-                    .selectionDisabled()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
                     
-                    // Calendar Grid
+                    // Month header
+                    monthHeader
                     calendarGrid
-                        .listRowSeparator(.hidden)
-                        .listRowSelectionDisabled(true)
-                }
-                
-                // SECTION 2: Logs for selected date
-                let dayLogs = viewModel.logs(for: selectedDate)
-                Section("Logs on \(formattedSelectedDate(selectedDate))") {
+                    
+                    // Daily logs block, now with a small List to allow swipe-to-delete
+                    Text("Logs on \(formattedSelectedDate(selectedDate))")
+                        .font(.headline)
+                        .padding(.top, 4)
+                    
+                    let dayLogs = viewModel.logs(for: selectedDate)
+                    
                     if dayLogs.isEmpty {
                         Text("No tasks logged on this day.")
                             .foregroundColor(.secondary)
+                            .padding(.bottom, 8)
                     } else {
-                        ForEach(dayLogs) { logItem in
-                            HStack {
-                                Text(logItem.taskName)
-                                Spacer()
-                                Text(logItem.timestamp, style: .time)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                        // A nested List (scrolled or not) to enable iOS swipe-to-delete
+                        List {
+                            ForEach(dayLogs) { entry in
+                                HStack {
+                                    Text(entry.taskName)
+                                        .font(.body)
+                                    Spacer()
+                                    Text(entry.timestamp, style: .time)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                             }
+                            .onDelete(perform: deleteLogsForSelectedDay)
                         }
-                        .onDelete(perform: deleteLogsForSelectedDay)
+                        .frame(minHeight: 100, maxHeight: 300) // Adjust as needed
+                        .listStyle(.plain)
+                        // If you want to prevent inner scrolling:
+                        .scrollDisabled(true)
+                        .padding(.bottom, 8)
                     }
-                }
-                
-                // SECTION 3: Month summary
-                let logsThisMonth = logsInMonth(currentMonth)
-                let grouped = Dictionary(grouping: logsThisMonth, by: \.taskName)
-                Section("\(monthTitleString(currentMonth)) Monthly Summary") {
+                    
+                    // Month summary block
+                    Text("\(monthTitleString(currentMonth)) Monthly Summary")
+                        .font(.headline)
+                        .padding(.top, 8)
+                    
+                    let logsThisMonth = logsInMonth(currentMonth)
+                    let grouped = Dictionary(grouping: logsThisMonth, by: \.taskName)
+                    
                     if grouped.isEmpty {
                         Text("No activities recorded this month.")
                             .foregroundColor(.secondary)
+                            .padding(.bottom, 8)
                     } else {
-                        ForEach(grouped.keys.sorted(), id: \.self) { taskName in
-                            let count = grouped[taskName]?.count ?? 0
-                            HStack {
-                                Text(taskName)
-                                Spacer()
-                                Text("\(count) time\(count == 1 ? "" : "s")")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                        VStack(spacing: 0) {
+                            ForEach(grouped.keys.sorted(), id: \.self) { taskName in
+                                let count = grouped[taskName]?.count ?? 0
+                                HStack {
+                                    Text(taskName)
+                                        .font(.body)
+                                    Spacer()
+                                    Text("\(count) time\(count == 1 ? "" : "s")")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(Color(uiColor: .systemGray6))
+                                .cornerRadius(8)
+                                .padding(.bottom, 4)
                             }
                         }
                     }
                 }
+                .padding([.horizontal, .bottom], 16)
             }
             .navigationTitle("Calendar")
-            .listStyle(.insetGrouped)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -117,7 +114,7 @@ struct PupCalendarView: View {
                     ShareSheet(activityItems: [csvURL])
                 }
             }
-            // Show AddEventView on a long-press
+            // Show add-event view on long press
             .sheet(isPresented: $showAddEventSheet) {
                 if let date = addEventDate {
                     AddEventView(
@@ -132,32 +129,56 @@ struct PupCalendarView: View {
         }
     }
     
-    // MARK: - Calendar Grid
+    // Month header + arrows
+    private var monthHeader: some View {
+        HStack {
+            Button {
+                moveMonth(-1)
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            Spacer()
+            Text(monthTitleString(currentMonth))
+                .font(.headline)
+            Spacer()
+            Button {
+                moveMonth(1)
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+        }
+        .padding(.top, 8)
+    }
+    
+    // Calendar grid
     private var calendarGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: columns), spacing: 8) {
-            ForEach(makeDaysInMonth(for: currentMonth), id: \.self) { date in
+        let gridColumns = Array(repeating: GridItem(.flexible()), count: columns)
+        let days = makeDaysInMonth(for: currentMonth)
+        
+        return LazyVGrid(columns: gridColumns, spacing: 8) {
+            ForEach(days, id: \.self) { date in
                 let dayNumber = calendar.component(.day, from: date)
-                let isInMonth = isSameMonth(date, as: currentMonth)
+                let isInThisMonth = isSameMonth(date, as: currentMonth)
                 let dayLogs = viewModel.logs(for: date)
-                let isSelected = (dateOnly(date) == dateOnly(selectedDate))
+                let isSelectedDay = (dateOnly(date) == dateOnly(selectedDate))
                 
-                // limit to 10 logs => 2 rows × 5 columns
+                // up to 10 logs => 2 rows x 5 columns
                 let limitedLogs = Array(dayLogs.prefix(10))
                 let row1 = Array(limitedLogs.prefix(5))
                 let row2 = Array(limitedLogs.dropFirst(5))
                 
-                VStack(spacing: 2) {
+                VStack(spacing: 4) {
                     ZStack {
-                        if isSelected {
+                        if isSelectedDay {
                             Circle()
                                 .fill(Color.gray.opacity(selectedCircleOpacity))
                                 .frame(width: selectedCircleDiameter, height: selectedCircleDiameter)
                         }
                         Text("\(dayNumber)")
                             .font(.callout)
-                            .foregroundColor(isInMonth ? .primary : .gray)
+                            .foregroundColor(isInThisMonth ? .primary : .gray)
                     }
-                    // dot rows
+                    // Dot rows
                     VStack(spacing: 2) {
                         HStack(spacing: 2) {
                             ForEach(row1, id: \.id) { log in
@@ -176,25 +197,22 @@ struct PupCalendarView: View {
                     }
                 }
                 .frame(minHeight: 40)
-                // tap to select date
                 .onTapGesture {
                     selectedDate = date
                 }
-                // long-press => add event
+                // Long press => add event
                 .simultaneousGesture(
                     LongPressGesture().onEnded { _ in
                         addEventDate = date
                         showAddEventSheet = true
                     }
                 )
-                // only this cell is interactive
-                .contentShape(Rectangle())
             }
         }
-        .padding(.bottom, 8)
+        .padding(.top, 8)
     }
     
-    // MARK: - Deletion
+    // Delete from selected day
     private func deleteLogsForSelectedDay(_ offsets: IndexSet) {
         let logsThatDay = viewModel.logs(for: selectedDate)
         for offset in offsets {
@@ -203,17 +221,34 @@ struct PupCalendarView: View {
         }
     }
     
-    // MARK: - Helpers
+    // Move month ±1
     private func moveMonth(_ offset: Int) {
         if let newMonth = calendar.date(byAdding: .month, value: offset, to: currentMonth) {
             currentMonth = newMonth
         }
     }
     
+    // Merge day + time
+    private func combine(day: Date, time: Date) -> Date {
+        let dayComps = calendar.dateComponents([.year, .month, .day], from: day)
+        let timeComps = calendar.dateComponents([.hour, .minute], from: time)
+        
+        var merged = DateComponents()
+        merged.year = dayComps.year
+        merged.month = dayComps.month
+        merged.day = dayComps.day
+        merged.hour = timeComps.hour
+        merged.minute = timeComps.minute
+        
+        return calendar.date(from: merged) ?? day
+    }
+    
+    // Helpers
     private func makeDaysInMonth(for base: Date) -> [Date] {
         guard let interval = calendar.dateInterval(of: .month, for: base) else { return [] }
         
         var days: [Date] = []
+        
         // Leading offset
         var current = interval.start
         let weekdayOffset = calendar.component(.weekday, from: current) - calendar.firstWeekday
@@ -230,9 +265,7 @@ struct PupCalendarView: View {
             days.append(current)
             if let nextDay = calendar.date(byAdding: .day, value: 1, to: current) {
                 current = nextDay
-            } else {
-                break
-            }
+            } else { break }
         }
         
         // Trailing offset
@@ -270,24 +303,9 @@ struct PupCalendarView: View {
         df.dateStyle = .medium
         return df.string(from: date)
     }
-    
-    private func combine(day: Date, time: Date) -> Date {
-        // Merge day + time
-        let dayComps = calendar.dateComponents([.year, .month, .day], from: day)
-        let timeComps = calendar.dateComponents([.hour, .minute], from: time)
-        
-        var merged = DateComponents()
-        merged.year = dayComps.year
-        merged.month = dayComps.month
-        merged.day = dayComps.day
-        merged.hour = timeComps.hour
-        merged.minute = timeComps.minute
-        
-        return calendar.date(from: merged) ?? Date()
-    }
 }
 
-/// AddEventView with an init guaranteeing we have a default selectedTaskName
+// AddEventView updated with onAppear fix
 struct AddEventView: View {
     let date: Date
     let tasks: [PupTask]
@@ -307,11 +325,11 @@ struct AddEventView: View {
         self.tasks = tasks
         self.onConfirm = onConfirm
         
-        // Default selected task = first if possible
+        // If tasks is empty, we won't set a default name. We fallback in .onAppear.
         let defaultTask = tasks.first?.name ?? ""
-        // Default time = 12 PM
-        let cal = Calendar.current
-        let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
+        
+        // Default time = 12:00 PM
+        let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
         
         _selectedTaskName = State(initialValue: defaultTask)
         _selectedTime = State(initialValue: noon)
@@ -320,16 +338,21 @@ struct AddEventView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Pick a Category") {
-                    Picker("Task", selection: $selectedTaskName) {
-                        ForEach(tasks, id: \.name) { t in
-                            Text(t.name).tag(t.name)
+                if tasks.isEmpty {
+                    Text("No tasks available. Please add tasks first.")
+                        .foregroundColor(.secondary)
+                } else {
+                    Section("Pick a Category") {
+                        Picker("Task", selection: $selectedTaskName) {
+                            ForEach(tasks, id: \.name) { t in
+                                Text(t.name).tag(t.name)
+                            }
                         }
                     }
-                }
-                
-                Section("Select Time") {
-                    DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                    
+                    Section("Select Time") {
+                        DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                    }
                 }
             }
             .navigationTitle("Add Event")
@@ -339,23 +362,29 @@ struct AddEventView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
+                        // If tasks was empty, this won't do anything
                         guard !selectedTaskName.isEmpty else { return }
                         onConfirm(selectedTaskName, selectedTime)
                         dismiss()
                     }
                 }
             }
+            .onAppear {
+                // If tasks was just loaded, pick a default
+                if selectedTaskName.isEmpty, let first = tasks.first {
+                    selectedTaskName = first.name
+                }
+            }
         }
     }
 }
 
-// Basic ShareSheet if you need it
+// Standard iOS share sheet
 struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
-    
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
