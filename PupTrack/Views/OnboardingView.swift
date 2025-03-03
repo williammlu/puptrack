@@ -19,7 +19,7 @@ struct OnboardingView: View {
             case 2:
                 OnboardingNamePage(currentPage: $currentPage)
             case 3:
-                OnboardingTaskPage(currentPage: $currentPage)
+                OnboardingTaskPage(currentPage: $currentPage, isOnboardingFlow: true)
             case 4:
                 OnboardingPhotoPage(currentPage: $currentPage)
             default:
@@ -83,10 +83,10 @@ struct OnboardingNamePage: View {
         VStack(spacing: 24) {
             Spacer()
             
-            Text("Your Dog’s Name")
+            Text("What is your dog’s name?")
                 .font(.title).bold()
             
-            TextField("Enter dog name...", text: $viewModel.dogName)
+            TextField("Enter dog's name...", text: $viewModel.dogName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal, 40)
             
@@ -115,8 +115,10 @@ struct OnboardingNamePage: View {
 // MARK: - Page 3: Tasks
 //
 struct OnboardingTaskPage: View {
+    @Environment(\.dismiss) var dismiss
     @EnvironmentObject var viewModel: PupViewModel
     @Binding var currentPage: Int
+    var isOnboardingFlow: Bool
     
     // For adding a new task
     @State private var customTaskName: String = ""
@@ -131,18 +133,20 @@ struct OnboardingTaskPage: View {
         NavigationStack {
             VStack(spacing: 16) {
                 // Top bar with back
-                HStack {
-                    Button {
-                        currentPage = 2
-                    } label: {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
+                if (isOnboardingFlow){
+                    HStack {
+                        Button {
+                            currentPage = 2
+                        } label: {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
+                        .foregroundColor(.blue)
+                        Spacer()
                     }
-                    .foregroundColor(.blue)
-                    Spacer()
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
-                
+              
                 Text("Select Care Tasks")
                     .font(.title).bold()
                 
@@ -169,7 +173,7 @@ struct OnboardingTaskPage: View {
                         
                         let color = colorOptions[(viewModel.tasks.count) % colorOptions.count]
                         viewModel.tasks.append(
-                            PupTask(name: trimmed, isSelected: true, colorName: colorString(for: color))
+                            PupTask(name: trimmed, isSelected: true, colorName: String(describing: color))
                         )
                         customTaskName = ""
                     }
@@ -179,7 +183,11 @@ struct OnboardingTaskPage: View {
                 Spacer()
                 
                 Button(action: {
-                    currentPage = 4
+                    if (isOnboardingFlow){
+                        currentPage = 4
+                    }else {
+                        dismiss()
+                    }
                 }) {
                     Text("Continue")
                         .font(.headline)
@@ -195,25 +203,6 @@ struct OnboardingTaskPage: View {
                 .disabled(viewModel.tasks.allSatisfy { !$0.isSelected })
             }
             .padding(.top, 20)
-        }
-    }
-    
-    // Convert SwiftUI Color -> string (for PupTask.colorName)
-    func colorString(for color: Color) -> String {
-        switch color {
-        case .red:     return "red"
-        case .orange:  return "orange"
-        case .yellow:  return "yellow"
-        case .green:   return "green"
-        case .mint:    return "mint"
-        case .teal:    return "teal"
-        case .cyan:    return "cyan"
-        case .blue:    return "blue"
-        case .indigo:  return "indigo"
-        case .purple:  return "purple"
-        case .pink:    return "pink"
-        case .brown:   return "brown"
-        default:       return "gray"
         }
     }
 }
@@ -347,7 +336,7 @@ struct OnboardingPhotoPage: View {
     }
 }
 
-// A pill row with a circular check if selected
+// A pill row with a circular check if selected, used for creating tasks
 struct PillRowView: View {
     let task: PupTask
     

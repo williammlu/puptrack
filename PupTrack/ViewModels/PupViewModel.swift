@@ -10,10 +10,11 @@ class PupViewModel: ObservableObject {
     /// A single list of tasks. Each PupTask can be selected (isSelected=true/false).
     /// We store a `colorName` string (e.g. "red") so PupTask is fully Codable.
     @Published var tasks: [PupTask] = [
-        PupTask(name: "Toothbrushing", isSelected: false, colorName: "red"),
-        PupTask(name: "Nails",         isSelected: false, colorName: "orange"),
-        PupTask(name: "Brushing Fur",  isSelected: false, colorName: "yellow"),
-        PupTask(name: "Throwing up",   isSelected: false, colorName: "green")
+        PupTask(name: "Toothbrushing", isSelected: false, colorName: "mint"),
+        PupTask(name: "Cut Nails",     isSelected: false, colorName: "orange"),
+        PupTask(name: "Throwing up",   isSelected: false, colorName: "yellow"),
+        PupTask(name: "Brushing Fur",  isSelected: false, colorName: "pink"),
+        PupTask(name: "Bath",          isSelected: false, colorName: "blue"),
     ]
     
     /// An optional array storing the names of selected tasks, if you need them separately.

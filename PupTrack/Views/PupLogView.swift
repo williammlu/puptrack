@@ -4,11 +4,12 @@ import PhotosUI
 struct PupLogView: View {
     @EnvironmentObject var viewModel: PupViewModel
     @State private var showPhotoUpdater = false
+    @State private var showTaskEditor = false
     
     var body: some View {
         NavigationStack {
             VStack {
-                // Show the photo in a square ratio, no cropping for landscape
+                // Show the photo in a square ratio
                 let slot = viewModel.currentPhotoSlot()
                 if let uiImage = viewModel.getPhoto(slot: slot) {
                     GeometryReader { geo in
@@ -16,7 +17,8 @@ struct PupLogView: View {
                         let size = geo.size.width
                         Image(uiImage: uiImage)
                             .resizable()
-                            .scaledToFit()
+                            .aspectRatio(contentMode: .fill)
+                            .clipped()
                             .frame(width: size, height: size)
                     }
                     .frame(height: UIScreen.main.bounds.width) // Reserve square space
@@ -57,11 +59,16 @@ struct PupLogView: View {
                 }
                 
                 // List of logs (with "No activities yet" if empty) + swipe-to-delete
-                List {
-                    if viewModel.logs.isEmpty {
-                        Text("No activities yet")
-                            .foregroundColor(.secondary)
-                    } else {
+                if viewModel.logs.isEmpty {
+                        VStack{
+                            Text("No activities yet")
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(16)
+                            Spacer()
+                        }.background(Color(UIColor.systemGroupedBackground))
+                } else {
+                    List {
                         ForEach(viewModel.logs) { logItem in
                             VStack(alignment: .leading) {
                                 Text(logItem.taskName)
@@ -85,9 +92,20 @@ struct PupLogView: View {
                         Image(systemName: "camera.on.rectangle")
                     }
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showTaskEditor.toggle()
+                    } label: {
+                        Image(systemName: "pencil.circle")
+                    }
+                }
             }
             .sheet(isPresented: $showPhotoUpdater) {
                 PupPhotoUpdateView()
+            }
+            .sheet(isPresented: $showTaskEditor) {
+                @State var currentPage: Int = 3
+                OnboardingTaskPage(currentPage: $currentPage, isOnboardingFlow: false)
             }
         }
     }
