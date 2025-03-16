@@ -59,7 +59,9 @@ struct PupLogView: View {
                 }
                 
                 // List of logs (with "No activities yet" if empty) + swipe-to-delete
-                if viewModel.logs.isEmpty {
+                let todayLogs = viewModel.logs.filter({
+                    Calendar.current.isDateInToday($0.timestamp)})
+                if todayLogs.isEmpty {
                         VStack{
                             Text("No activities yet")
                                 .foregroundColor(.secondary)
@@ -68,18 +70,21 @@ struct PupLogView: View {
                             Spacer()
                         }.background(Color(UIColor.systemGroupedBackground))
                 } else {
-                    List {
-                        ForEach(viewModel.logs) { logItem in
-                            VStack(alignment: .leading) {
-                                Text(logItem.taskName)
-                                    .font(.headline)
-                                Text(logItem.timestamp, style: .time)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
+                        List {
+                            Section(header: Text("Today's Activities")) {
+                                ForEach(todayLogs) { logItem in
+                                    VStack(alignment: .leading) {
+                                        Text(logItem.taskName)
+                                            .font(.headline)
+                                        Text(logItem.timestamp, style: .date)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                // This only works for now b.c current date is most recent
+                                .onDelete(perform: deleteLogs)
+                            }.listStyle(GroupedListStyle())
                         }
-                        .onDelete(perform: deleteLogs)
-                    }
                 }
             }
             .navigationTitle("\(viewModel.dogName)’s Log")
